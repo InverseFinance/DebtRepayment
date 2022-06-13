@@ -21,7 +21,7 @@ contract DebtRepayer {
      * a user can have when selling their debt.
      * The maxDiscount can be seen as the starting point of the discount rate.
      * Must be set between 0 and baseline, with baseline denoting a 100% discount.
-     * setable by owner
+     * setable by governance
      */
     uint public maxDiscount;
     
@@ -29,14 +29,19 @@ contract DebtRepayer {
      * zeroDiscountReserveThreshold, is the threshold at which the discount on selling reaches 0
      * If discount is 0, you can buy all of the reserves at 0 discount, even if pushing the discount rate up with the sell.
      * Must be set between 0 and baseline, with baseline meaning 0 discount at 100% reserve to debt rate.
-     * setable by owner
+     * setable by governance
      */
     uint public zeroDiscountReserveThreshold;
 
     /*
-     * The owner of the contract. Can set maxDiscount, zeroDiscountReserveThreshold, Owner, Treasury and sweep tokens from the contract
+     * The governance of the contract. Can set maxDiscount, zeroDiscountReserveThreshold, Governance, Treasury and sweep tokens from the contract
      */
-    address public owner;
+    address public governance;
+
+    /*
+     * The controller of the contract. Can set maxDiscount, zeroDiscountReserveThreshold, Governance, Treasury and sweep tokens from the contract
+     */
+    address public controller;
     /*
      * The address to which anTokens are paid to.
      */
@@ -50,13 +55,14 @@ contract DebtRepayer {
     IERC20 constant wbtc = IERC20(0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599);
     IERC20 constant weth = IERC20(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2);
 
-    constructor(uint decimals, uint maxDiscount_, uint zeroDiscountReserveThreshold_, address owner_, address treasury_){
+    constructor(uint decimals, uint maxDiscount_, uint zeroDiscountReserveThreshold_, address governance_, address controller_, address treasury_){
         require(maxDiscount <= 10 ** decimals);
         require(zeroDiscountReserveThreshold_ <= 10 ** decimals);
         zeroDiscountReserveThreshold = zeroDiscountReserveThreshold_;
         maxDiscount = maxDiscount_;
         baseline = 10 ** decimals;
-        owner = owner_;
+        governance = governance_;
+        controller = controller_;
         treasury = treasury_;
     }
 
@@ -165,58 +171,67 @@ contract DebtRepayer {
     // *******************
     
     /*
-     * @notice function for sweeping any token owned by this contract to the owner address
-     * Only callable by owner
+     * @notice function for sweeping any token owned by this contract to the treasury address
+     * Only callable by governance or controller
      * @token Address of the ERC20 token to sweep
      * @amount Amount to sweep
      */
     function sweepTokens(address token, uint amount) public{
-        require(msg.sender == owner);
+        require(msg.sender == governance || msg.sender == controller);
         require(IERC20(token).balanceOf(address(this)) >= amount);
-        IERC20(token).transfer(owner, amount);
+        IERC20(token).transfer(treasury, amount);
     }
 
     /*
-     * @notice function for setting a new maxDiscount. Only callable by owner.
+     * @notice function for setting a new maxDiscount. Only callable by governance or controller.
      * If set to 0, the maxDiscount is 0%
      * If set to baseline, the maxDiscount is 100%
      * @param newMaxDiscount The new maxDiscount rate. Must be set between 0 and baseline.
      */ 
     function setMaxDiscount(uint newMaxDiscount) public{
-        require(msg.sender == owner);
+        require(msg.sender == governance || msg.sender == controller);
         require(newMaxDiscount <= baseline);
         maxDiscount = newMaxDiscount;
     }
     
     /*
-     * @notice function for setting a new zeroDiscountReserveThreshold. Only callable by owner.
+     * @notice function for setting a new zeroDiscountReserveThreshold. Only callable by governanceor controller.
      * If set to 1, the discount rate will be 0% when 1/baseline of debt has been paid to the contract.
      * If set to baseline, the discount rate will be 0% when 100% of debt has been paid to the contract.
      * @param newZeroDiscountReserveThreshold The new zero discount reserve threshold. Must be set between 1 and baseline.
      */
     function setZeroDiscountReserveThreshold(uint newZeroDiscountReserveThreshold) public{
-        require(msg.sender == owner);
+        require(msg.sender == governance || msg.sender == controller);
         require(newZeroDiscountReserveThreshold <= baseline);
         require(newZeroDiscountReserveThreshold > 0);
         zeroDiscountReserveThreshold = newZeroDiscountReserveThreshold;
     }
 
     /*
-     * @notice Function for setting the new owner. Only callable by owner.
-     * @param newOwner The address of the newOwner
+     * @notice Function for setting the new governance. Only callable by governance.
+     * @param newGovernance The address of the newGovernance
      */
-    function setOwner(address newOwner) public{
-        require(msg.sender == owner);
-        owner = newOwner;
+    function setGovernance(address newGovernance) public{
+        require(msg.sender == governance);
+        governance = newGovernance;
     }
 
     /*
-     * @notice Fucntion for setting a new treasury. Only callable by owner.
+     * @notice Function for setting a new treasury. Only callable by governance.
      * @param newTreasury The address of the new treasury.
      */
     function setTreasury(address newTreasury) public{
-        require(msg.sender == owner);
+        require(msg.sender == governance);
         treasury = newTreasury;
+    }
+
+    /*
+     * @notice Function for setting a new controller. Only callable by governance.
+     * @param newController The address of the new controller.
+     */
+    function setController(address newController) public{
+        require(msg.sender == governance);
+        controller = newController;
     }
 
     event debtRepayment(address underlying, uint receiveAmount, uint paidAmount);

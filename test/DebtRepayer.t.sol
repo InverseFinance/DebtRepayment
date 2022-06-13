@@ -14,15 +14,17 @@ contract DebtRepayerTest is Test {
 
     uint baseline = 10 ** decimals;
 
-    address owner = address(0xa);
+    address governance = address(0xa);
+    
+    address controller = address(0xb);
 
-    address treasury = address(0xb);
+    address treasury = address(0xc);
 
     address anEthHolder = 0x6fC34A8B9B4973b5E6b0B6a984Bb0bEcC9Ca2b29;
     address anBtcHolder = 0x63A9dF1C07BdeB97D634344827bf8f6140D93EC6;
-    address anYfiHolder = 0x736DdE3E0F5c588dDC53ad7f0F65667C0Cca2801;
+    address anYfiHolder = 0x6fC34A8B9B4973b5E6b0B6a984Bb0bEcC9Ca2b29;
 
-    address yfiHolder = 0xF977814e90dA44bFA03b6295A0616a897441aceC;
+    address yfiHolder = 0xE174c389249b0E3a4eC84d2A5667Aa4920CB77DE;
     address wbtcHolder = 0x8Fd589AA8bfA402156a6D1ad323FEC0ECee50D9D;
     address wethHolder = 0x6555e1CC97d3cbA6eAddebBCD7Ca51d75771e0B8;
 
@@ -37,7 +39,7 @@ contract DebtRepayerTest is Test {
    
 
     function setUp() public{
-        debtRepayer = new DebtRepayer(decimals, baseline / 2, baseline / 10, owner, treasury);
+        debtRepayer = new DebtRepayer(decimals, baseline / 2, baseline / 10, governance, controller, treasury);
     }
 
     function test_currentDiscount_isZero_when_reservesAreFull() public {
@@ -133,8 +135,11 @@ contract DebtRepayerTest is Test {
         //Arrange
         vm.startPrank(yfiHolder);
         yfi.transfer(address(debtRepayer), yfi.balanceOf(yfiHolder));
+        emit log_uint(yfi.balanceOf(address(debtRepayer)));
         vm.stopPrank();
         vm.startPrank(anYfiHolder);
+        IERC20(anYfi).transfer(address(debtRepayer), 10 ** 8);
+        emit log_uint(IERC20(anYfi).balanceOf(address(debtRepayer)));
 
         //Act
         uint amountIn = 10 ** 8;
@@ -331,20 +336,33 @@ contract DebtRepayerTest is Test {
     // * ACCESS CONTROL TESTS *
     // ************************
 
-    function test_sweepTokens_when_CalledByOwner() public {
+    function test_sweepTokens_when_CalledByGovernance() public {
         vm.startPrank(wbtcHolder);
         uint balance = wbtc.balanceOf(wbtcHolder);
-        uint balanceOwnerBefore = wbtc.balanceOf(owner);
+        uint balanceGovernanceBefore = wbtc.balanceOf(governance);
         wbtc.transfer(address(debtRepayer), balance);
         
         vm.stopPrank();
-        vm.startPrank(owner);
+        vm.startPrank(governance);
         debtRepayer.sweepTokens(address(wbtc), balance);
 
-        assertEq(wbtc.balanceOf(owner), balance + balanceOwnerBefore);
+        assertEq(wbtc.balanceOf(treasury), balance + balanceGovernanceBefore);
     }
 
-    function testFail_sweepTokens_when_CalledByNonOwner() public {
+    function test_sweepTokens_when_CalledByController() public {
+        vm.startPrank(wbtcHolder);
+        uint balance = wbtc.balanceOf(wbtcHolder);
+        uint balanceControllerBefore = wbtc.balanceOf(controller);
+        wbtc.transfer(address(debtRepayer), balance);
+        
+        vm.stopPrank();
+        vm.startPrank(controller);
+        debtRepayer.sweepTokens(address(wbtc), balance);
+
+        assertEq(wbtc.balanceOf(treasury), balance + balanceControllerBefore);
+    }
+
+    function testFail_sweepTokens_when_CalledByNonGovernance() public {
         vm.startPrank(wbtcHolder);
         uint balance = wbtc.balanceOf(wbtcHolder);
         wbtc.transfer(address(debtRepayer), balance);
@@ -352,8 +370,17 @@ contract DebtRepayerTest is Test {
         debtRepayer.sweepTokens(address(wbtc), balance);
     }
 
-    function test_setMaxDiscount_success_when_CalledByOwner() public {
-        vm.startPrank(owner);
+    function test_setMaxDiscount_success_when_CalledByGovernance() public {
+        vm.startPrank(governance);
+        uint oldMaxDiscount = debtRepayer.maxDiscount();
+        
+        debtRepayer.setMaxDiscount(oldMaxDiscount + 1);
+
+        assertEq(oldMaxDiscount + 1, debtRepayer.maxDiscount());
+    }
+
+    function test_setMaxDiscount_success_when_CalledByController() public {
+        vm.startPrank(controller);
         uint oldMaxDiscount = debtRepayer.maxDiscount();
         
         debtRepayer.setMaxDiscount(oldMaxDiscount + 1);
@@ -362,18 +389,27 @@ contract DebtRepayerTest is Test {
     }
 
     function testFail_setMaxDiscount_when_SetOverBaseline() public {
-        vm.startPrank(owner);
+        vm.startPrank(governance);
         
         debtRepayer.setMaxDiscount(debtRepayer.baseline()+1);
     }
 
-    function testFail_setMaxDiscount_when_CalledByNonOwner() public {
+    function testFail_setMaxDiscount_when_CalledByNonGovernance() public {
         vm.startPrank(wbtcHolder);
         debtRepayer.setMaxDiscount(1);
     }
 
-    function test_setZeroDiscountReserveThreshold_success_when_CalledByOwner() public {
-        vm.startPrank(owner);
+    function test_setZeroDiscountReserveThreshold_success_when_CalledByGovernance() public {
+        vm.startPrank(governance);
+        uint oldThreshold = debtRepayer.zeroDiscountReserveThreshold();
+        
+        debtRepayer.setZeroDiscountReserveThreshold(oldThreshold + 1);
+
+        assertEq(oldThreshold + 1, debtRepayer.zeroDiscountReserveThreshold());
+    }
+
+    function test_setZeroDiscountReserveThreshold_success_when_CalledByController() public {
+        vm.startPrank(controller);
         uint oldThreshold = debtRepayer.zeroDiscountReserveThreshold();
         
         debtRepayer.setZeroDiscountReserveThreshold(oldThreshold + 1);
@@ -382,37 +418,37 @@ contract DebtRepayerTest is Test {
     }
 
     function testFail_setZeroDiscountReserveThreshold_when_SetOverBaseline() public {
-        vm.startPrank(owner);
+        vm.startPrank(governance);
         
         debtRepayer.setZeroDiscountReserveThreshold(debtRepayer.baseline() + 1);
     }
 
-    function testFail_setZeroDiscountReserveThreshold_when_CalledByNonOwner() public {
+    function testFail_setZeroDiscountReserveThreshold_when_CalledByNonGovernance() public {
         vm.startPrank(wbtcHolder);
         
         debtRepayer.setZeroDiscountReserveThreshold(1);
     }
 
-    function test_setOwner_success_when_CalledByOwner() public {
-        vm.startPrank(owner);
+    function test_setGovernance_success_when_CalledByGovernance() public {
+        vm.startPrank(governance);
 
-        assert(debtRepayer.owner() != treasury); 
-        debtRepayer.setOwner(treasury);
-        assertEq(debtRepayer.owner(), treasury);
+        assert(debtRepayer.governance() != treasury); 
+        debtRepayer.setGovernance(treasury);
+        assertEq(debtRepayer.governance(), treasury);
     }
 
-    function testFail_setOwner__when_CalledByNonOwner() public {
+    function testFail_setGovernance__when_CalledByNonGovernance() public {
         vm.startPrank(wbtcHolder);
 
-        debtRepayer.setOwner(treasury);
+        debtRepayer.setGovernance(treasury);
     }
 
     function test_setTreasury_success_when_CalledByTreasury() public {
-        vm.startPrank(owner);
+        vm.startPrank(governance);
 
-        assert(debtRepayer.treasury() != owner); 
-        debtRepayer.setTreasury(owner);
-        assertEq(debtRepayer.treasury(), owner);
+        assert(debtRepayer.treasury() != governance); 
+        debtRepayer.setTreasury(governance);
+        assertEq(debtRepayer.treasury(), governance);
     }
 
     function testFail_setTreasury__when_CalledByNonTreasury() public {
