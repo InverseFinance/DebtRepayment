@@ -91,7 +91,7 @@ contract DebtRepayer {
         require(receiveAmount >= minOut, "RECEIVED LOWER THAN EXPECTED");
         uint treasuryFunds = IERC20(anToken).balanceOf(treasury);
         uint userFunds = underlying.balanceOf(msg.sender);
-        IERC20(address(anToken)).transferFrom(msg.sender, treasury, payAmount);
+        require(IERC20(address(anToken)).transferFrom(msg.sender, treasury, payAmount), "TRANSFER FROM FAILED");
         require(IERC20(anToken).balanceOf(treasury) - treasuryFunds >= payAmount, "TREASURY TRANSFER FAILED");
         underlying.transfer(msg.sender, receiveAmount);
         require(underlying.balanceOf(msg.sender) - userFunds >= receiveAmount, "USER TRANSFER FAILED");
