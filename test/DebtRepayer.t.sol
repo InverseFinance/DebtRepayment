@@ -6,6 +6,10 @@ import "forge-std/Test.sol";
 import "src/DebtRepayer.sol";
 import "src/IERC20.sol";
 
+interface ComptrollerInterface {
+    function _setTransferPaused(bool) external;
+}
+
 contract DebtRepayerTest is Test {
 
     DebtRepayer debtRepayer;
@@ -14,19 +18,21 @@ contract DebtRepayerTest is Test {
 
     uint baseline = 10 ** decimals;
 
-    address governance = address(0xa);
+    address governance = 0x926dF14a23BE491164dCF93f4c468A50ef659D5B;
     
     address controller = address(0xb);
 
     address treasury = address(0xc);
 
-    address anEthHolder = 0x6fC34A8B9B4973b5E6b0B6a984Bb0bEcC9Ca2b29;
+    ComptrollerInterface comptroller = ComptrollerInterface(0x4dCf7407AE5C07f8681e1659f626E114A7667339);
+
+    address anEthHolder = 0x3F7C10cBbb1EA1046a80B738b9Eaf3217410c7F6;
     address anBtcHolder = 0x63A9dF1C07BdeB97D634344827bf8f6140D93EC6;
     address anYfiHolder = 0x6fC34A8B9B4973b5E6b0B6a984Bb0bEcC9Ca2b29;
 
     address yfiHolder = 0xE174c389249b0E3a4eC84d2A5667Aa4920CB77DE;
-    address wbtcHolder = 0x8Fd589AA8bfA402156a6D1ad323FEC0ECee50D9D;
-    address wethHolder = 0x6555e1CC97d3cbA6eAddebBCD7Ca51d75771e0B8;
+    address wbtcHolder = 0x218B95BE3ed99141b0144Dba6cE88807c4AD7C09;
+    address wethHolder = 0x06920C9fC643De77B99cB7670A944AD31eaAA260;
 
     IERC20 constant yfi = IERC20(0x0bc529c00C6401aEF6D220BE8C6Ea1667F6Ad93e);
     IERC20 constant wbtc = IERC20(0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599);
@@ -40,6 +46,20 @@ contract DebtRepayerTest is Test {
 
     function setUp() public{
         debtRepayer = new DebtRepayer(decimals, baseline / 2, baseline / 10, governance, controller, treasury);
+        vm.startPrank(governance);
+        comptroller._setTransferPaused(false);
+        vm.stopPrank();
+        /*
+        vm.startPrank(anEthHolder);
+        IERC20(anEth).approve(address(debtRepayer), type(uint).max);
+        vm.stopPrank();
+        vm.startPrank(anYfiHolder);
+        IERC20(anYfi).approve(address(debtRepayer), type(uint).max);
+        vm.stopPrank();
+        vm.startPrank(anBtcHolder);
+        IERC20(anBtc).approve(address(debtRepayer), type(uint).max);
+        vm.stopPrank();
+        */
     }
 
     function test_currentDiscount_isZero_when_reservesAreFull() public {
@@ -54,9 +74,9 @@ contract DebtRepayerTest is Test {
         weth.transfer(address(debtRepayer), weth.balanceOf(wethHolder));
 
         //Assert
-        assertEq(debtRepayer.currentDiscount(anEth), debtRepayer.baseline());
-        assertEq(debtRepayer.currentDiscount(anYfi), debtRepayer.baseline());
-        assertEq(debtRepayer.currentDiscount(anBtc), debtRepayer.baseline());
+        assertEq(debtRepayer.currentDiscount(anEth), debtRepayer.baseline(), "anEth discount not 0");
+        assertEq(debtRepayer.currentDiscount(anYfi), debtRepayer.baseline(), "anYfi discount not 0");
+        assertEq(debtRepayer.currentDiscount(anBtc), debtRepayer.baseline(), "anWbtc discount not 0");
     }
 
     function test_currentDiscount_isMax_when_noReserves() public {
@@ -109,9 +129,9 @@ contract DebtRepayerTest is Test {
         (uint amountOut, uint amountInActual) = debtRepayer.amountOut(anBtc, wbtc, amountIn);
         
         //Assert
-        assertGt(amountIn, amountOut);
-        assertEq(expectedOutput, amountOut);
-        assertEq(amountIn, amountInActual);
+        assertGt(amountIn, amountOut, "amountIn less than amountOut");
+        assertEq(expectedOutput, amountOut, "expectedOutput not equal amountOut");
+        assertEq(amountIn, amountInActual, "amountIn not equal amountInActual");
     }
 
     function test_amountOutEth_isCorrectExchangeRate_when_FullEthReserves() public {
@@ -272,9 +292,9 @@ contract DebtRepayerTest is Test {
         uint remainingDebt = debtRepayer.remainingDebt(anYfi);
         yfi.transfer(address(debtRepayer), remainingDebt / 10);
         vm.stopPrank();
-        vm.startPrank(anYfiHolder);
 
         //Act
+        vm.startPrank(anYfiHolder);
         uint amountIn = IERC20(anYfi).balanceOf(anYfiHolder);
         uint amountInConverted = debtRepayer.convertToUnderlying(anYfi, amountIn);
         uint expectedOutput = remainingDebt / 10;
@@ -292,14 +312,18 @@ contract DebtRepayerTest is Test {
         //Arrange
         vm.startPrank(wbtcHolder);
         uint remainingDebt = debtRepayer.remainingDebt(anBtc);
+        emit log_uint(remainingDebt);
         wbtc.transfer(address(debtRepayer), remainingDebt / 10);
         vm.stopPrank();
-        vm.startPrank(anBtcHolder);
+        //gibAnTokens(anBtcHolder, anBtc, 10 ** 10);
 
         //Act
+        vm.startPrank(anBtcHolder);
         uint amountIn = IERC20(anBtc).balanceOf(anBtcHolder);
         uint amountInConverted = debtRepayer.convertToUnderlying(anBtc, amountIn);
+        emit log_uint(amountInConverted);
         uint expectedOutput = remainingDebt / 10;
+        emit log_uint(expectedOutput);
         uint wbtcBalanceBefore = wbtc.balanceOf(anBtcHolder);
         uint anBtcBalanceBefore = IERC20(anBtc).balanceOf(anBtcHolder);
         IERC20(anBtc).approve(address(debtRepayer), amountIn);
@@ -339,27 +363,27 @@ contract DebtRepayerTest is Test {
     function test_sweepTokens_when_CalledByGovernance() public {
         vm.startPrank(wbtcHolder);
         uint balance = wbtc.balanceOf(wbtcHolder);
-        uint balanceGovernanceBefore = wbtc.balanceOf(governance);
+        uint balanceTreasuryBefore = wbtc.balanceOf(treasury);
         wbtc.transfer(address(debtRepayer), balance);
-        
         vm.stopPrank();
+
         vm.startPrank(governance);
         debtRepayer.sweepTokens(address(wbtc), balance);
 
-        assertEq(wbtc.balanceOf(treasury), balance + balanceGovernanceBefore);
+        assertEq(wbtc.balanceOf(treasury), balance + balanceTreasuryBefore);
     }
 
     function test_sweepTokens_when_CalledByController() public {
         vm.startPrank(wbtcHolder);
         uint balance = wbtc.balanceOf(wbtcHolder);
-        uint balanceControllerBefore = wbtc.balanceOf(controller);
+        uint balanceTreasuryBefore = wbtc.balanceOf(treasury);
         wbtc.transfer(address(debtRepayer), balance);
         
         vm.stopPrank();
         vm.startPrank(controller);
         debtRepayer.sweepTokens(address(wbtc), balance);
 
-        assertEq(wbtc.balanceOf(treasury), balance + balanceControllerBefore);
+        assertEq(wbtc.balanceOf(treasury), balance + balanceTreasuryBefore);
     }
 
     function testFail_sweepTokens_when_CalledByNonGovernance() public {
@@ -456,4 +480,16 @@ contract DebtRepayerTest is Test {
 
         debtRepayer.setTreasury(wbtcHolder);
     }
+
+    function gibAnTokens(address _user, address _anToken, uint _amount) internal {
+        bytes32 slot;
+        assembly {
+            mstore(0, _user)
+            mstore(0x20, 0xE)
+            slot := keccak256(0, 0x40)
+        }
+
+        vm.store(_anToken, slot, bytes32(_amount));
+    }
+
 }
