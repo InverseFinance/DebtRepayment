@@ -56,7 +56,7 @@ contract DebtRepayer {
     IERC20 constant weth = IERC20(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2);
 
     constructor(uint decimals, uint maxDiscount_, uint zeroDiscountReserveThreshold_, address governance_, address controller_, address treasury_){
-        require(maxDiscount <= 10 ** decimals);
+        require(maxDiscount_ <= 10 ** decimals);
         require(zeroDiscountReserveThreshold_ <= 10 ** decimals);
         zeroDiscountReserveThreshold = zeroDiscountReserveThreshold_;
         maxDiscount = maxDiscount_;
